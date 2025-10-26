@@ -48,6 +48,64 @@ function clearMemory(chatId) {
   delete userMemory[chatId];
 }
 
+// ==================== EXTRACT BIKE MODEL FROM TEXT ====================
+function extractBikeModel(userText) {
+  const brands = ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'bajaj', 'royal enfield', 'bullet', 'pulsar', 'ducati', 'bmw'];
+  const models = ['ninja', 'hayabusa', 'cbr', 'r15', 'mt', 'pulsar', 'apache', 'bullet', 'classic', 'continental'];
+  
+  let foundBrand = '';
+  let foundModel = '';
+  
+  // Find brand
+  for (const brand of brands) {
+    if (userText.includes(brand)) {
+      foundBrand = brand;
+      break;
+    }
+  }
+  
+  // Find model
+  for (const model of models) {
+    if (userText.includes(model)) {
+      foundModel = model;
+      break;
+    }
+  }
+  
+  // Format nicely: "Kawasaki Ninja" instead of "kawasaki ninja"
+  if (foundBrand && foundModel) {
+    return `${foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1)} ${foundModel.charAt(0).toUpperCase() + foundModel.slice(1)}`;
+  } else if (foundBrand) {
+    return foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1);
+  }
+  
+  return userText; // Fallback to original text
+}
+
+// ==================== EXTRACT ISSUE FROM TEXT ====================
+function extractIssue(userText) {
+  const issues = {
+    'spark': 'spark plug',
+    'plug': 'spark plug', 
+    'engine': 'engine',
+    'brake': 'brake',
+    'oil': 'oil change',
+    'electrical': 'electrical',
+    'starting': 'starting issue',
+    'noise': 'unusual noise',
+    'chain': 'chain maintenance',
+    'tire': 'tire issue'
+  };
+  
+  for (const [key, issue] of Object.entries(issues)) {
+    if (userText.includes(key)) {
+      return issue;
+    }
+  }
+  
+  return userText; // Fallback to original text
+}
+
 // ==================== PRIYA'S PERSONALITY ====================
 const priyaResponses = {
   greeting: [
@@ -64,11 +122,6 @@ const priyaResponses = {
     "I sense your frustration. Let's tackle this problem step by step - we've got this! 💪",
     "I understand it's frustrating. Take a deep breath and let me help you find the solution.",
     "Technical issues can be annoying, but together we'll get through this. What's the main problem?"
-  ],
-  videoReady: [
-    "Perfect! I have the details. Would you like me to find specific video tutorials for this?",
-    "Excellent! Now I understand your ${model} with ${issue}. Ready for me to search the best repair videos?",
-    "Got it! ${model} with ${issue}. Should I find expert video tutorials for you now?"
   ]
 };
 
@@ -131,21 +184,25 @@ app.post('/webhook', async (req, res) => {
           clearMemory(chatId);
         }
       }
-      // 5. COLLECT MOTORCYCLE MODEL
+      // 5. COLLECT MOTORCYCLE MODEL (FIXED VERSION)
       else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || userText.includes('honda') || userText.includes('yamaha') || userText.includes('bajaj') || userText.includes('royal enfield')) {
-        updateMemory(chatId, 'model', userText);
+        
+        const cleanModel = extractBikeModel(userText);
+        updateMemory(chatId, 'model', cleanModel);
         
         // Brand clarification for Hayabusa
         if (userText.includes('hayabusa') && userText.includes('kawasaki')) {
           response = "I see you're working on a motorcycle! Just to clarify - the Hayabusa is actually Suzuki's model, not Kawasaki. But no worries! What specific issue are you having? I can find detailed repair videos! 🏍️";
         } else {
-          response = `Excellent! You have a ${userText}. What specific issue are you experiencing? (e.g., spark plugs, oil change, brakes, electrical)`;
+          response = `Excellent! You have a ${cleanModel}. What specific issue are you experiencing? (e.g., spark plugs, oil change, brakes, electrical)`;
         }
       }
-      // 6. COLLECT ISSUE DESCRIPTION
+      // 6. COLLECT ISSUE DESCRIPTION (FIXED VERSION)
       else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise'))) {
-        updateMemory(chatId, 'issue', userText);
-        response = `Perfect! I understand: ${memory.model} with ${userText} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
+        
+        const cleanIssue = extractIssue(userText);
+        updateMemory(chatId, 'issue', cleanIssue);
+        response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
       }
       // 7. YES/NO HANDLING
       else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText === 'sure' || userText === 'ok') {
@@ -180,11 +237,11 @@ app.listen(port, () => {
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
 
-// Clean up old memory every hour (optional)
+// Clean up old memory every hour
 setInterval(() => {
   const now = Date.now();
   for (const chatId in userMemory) {
-    if (now - userMemory[chatId].lastActive > 3600000) { // 1 hour
+    if (now - userMemory[chatId].lastActive > 3600000) {
       delete userMemory[chatId];
     }
   }
