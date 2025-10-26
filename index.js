@@ -7,108 +7,185 @@ const port = process.env.PORT || 3000;
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, {polling: false});
 
-// Priya's intelligent responses
+// ==================== YOUTUBE API FUNCTION ====================
+async function searchYouTubeVideos(query) {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=3&q=${encodeURIComponent(query + " motorcycle repair tutorial")}&type=video&key=${apiKey}&videoDuration=medium`;
+  
+  try {
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      return data.items.map(item => ({
+        title: item.snippet.title,
+        videoId: item.id.videoId,
+        channel: item.snippet.channelTitle,
+        thumbnail: item.snippet.thumbnails.default.url
+      }));
+    }
+    return null;
+  } catch (error) {
+    console.log('YouTube API error:', error);
+    return null;
+  }
+}
+
+// ==================== CONVERSATION MEMORY ====================
+const userMemory = {};
+
+function updateMemory(chatId, field, value) {
+  if (!userMemory[chatId]) userMemory[chatId] = {};
+  userMemory[chatId][field] = value;
+  userMemory[chatId].lastActive = Date.now();
+}
+
+function getMemory(chatId) {
+  return userMemory[chatId] || {};
+}
+
+function clearMemory(chatId) {
+  delete userMemory[chatId];
+}
+
+// ==================== PRIYA'S PERSONALITY ====================
 const priyaResponses = {
   greeting: [
-    "Namaste! I'm Priya, your intelligent assistant. How can I help you today? 😊",
-    "Hello there! I see a curious mind ready to explore. What shall we discover together? 🚀",
-    "Well hello! I was just organizing some brilliant answers. What brings you here today? 💫"
+    "Namaste! I'm Priya, your intelligent assistant. I can find video tutorials for any motorcycle issue! 🏍️",
+    "Hello there! I see a curious mind ready to explore. I specialize in finding exact repair videos for your bike! 🚀",
+    "Well hello! I was just organizing some brilliant video tutorials. What motorcycle issue can I help you solve today? 💫"
   ],
   help: [
-    "I sense you need guidance! Are you looking for technical help, tutorials, or something else?",
-    "Don't worry, I'm here to help! Tell me what's challenging you today.",
-    "Let's solve this together! What specific issue are you facing?"
+    "I sense you need guidance! Tell me your motorcycle model and issue, and I'll find perfect video tutorials.",
+    "Don't worry, I'm here to help! What's your bike model and what problem are you facing?",
+    "Let's solve this together! Tell me your motorcycle details and the issue."
   ],
   frustrated: [
     "I sense your frustration. Let's tackle this problem step by step - we've got this! 💪",
     "I understand it's frustrating. Take a deep breath and let me help you find the solution.",
     "Technical issues can be annoying, but together we'll get through this. What's the main problem?"
   ],
-  video: [
-    "I'd love to find you the perfect video tutorial! 🎥 What specific topic would you like me to search for?",
-    "Great! I can find expert video guides for you. Tell me exactly what you want to learn!",
-    "Video tutorials are my specialty! What specific skill or repair do you want to master?"
-  ],
-  yes: [
-    "Perfect! 🎯 Tell me the exact model and year of your motorcycle, and I'll find the perfect video tutorial for you!",
-    "Excellent! I'm on it. What's your specific bike model and the issue you're facing?",
-    "Great! Let me find the best tutorial for you. What's your motorcycle's exact model and year?"
+  videoReady: [
+    "Perfect! I have the details. Would you like me to find specific video tutorials for this?",
+    "Excellent! Now I understand your ${model} with ${issue}. Ready for me to search the best repair videos?",
+    "Got it! ${model} with ${issue}. Should I find expert video tutorials for you now?"
   ]
 };
 
-// Basic web server
+// ==================== EXPRESS SERVER SETUP ====================
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.send('Priya Assistant is running! 🚀');
+  res.send('🚀 Priya Assistant is running with YouTube API!');
 });
 
-// FIX: Add GET endpoint for webhook verification
 app.get('/webhook', (req, res) => {
-  res.send('Webhook is active! Priya is ready to assist. 🚀');
+  res.send('✅ Webhook is active! Priya is ready with video intelligence.');
 });
 
-// Webhook for Telegram - POST requests
-app.post('/webhook', (req, res) => {
+// ==================== TELEGRAM WEBHOOK HANDLER ====================
+app.post('/webhook', async (req, res) => {
   const message = req.body.message;
   
   if (message && message.text) {
     const chatId = message.chat.id;
     const userText = message.text.toLowerCase();
+    const memory = getMemory(chatId);
     
-    let response = "I'm still learning, but I'm here to help! What can I assist you with today?";
-    
-    // ENHANCED INTELLIGENCE WITH BETTER FLOW:
-    
-    // 1. Greetings first
-    if (userText.includes('hello') || userText.includes('hi') || userText.includes('/start')) {
-      response = priyaResponses.greeting[Math.floor(Math.random() * priyaResponses.greeting.length)];
-    } 
-    // 2. Help requests
-    else if (userText.includes('help') || userText.includes('support')) {
-      response = priyaResponses.help[Math.floor(Math.random() * priyaResponses.help.length)];
-    } 
-    // 3. Emotion detection
-    else if (userText.includes('frustrated') || userText.includes('angry') || userText.includes('annoying')) {
-      response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
-    } 
-    // 4. VIDEO/YOUTUBE INTENT (MOVED HIGHER)
-    else if (userText.includes('video') || userText.includes('tutorial') || userText.includes('show me') || userText.includes('youtube') || userText.includes('watch')) {
-      response = priyaResponses.video[Math.floor(Math.random() * priyaResponses.video.length)];
-    } 
-    // 5. YES/NO DETECTION (NEW)
-    else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText === 'sure' || userText === 'ok') {
-      response = priyaResponses.yes[Math.floor(Math.random() * priyaResponses.yes.length)];
-    } 
-    else if (userText === 'no' || userText === 'nope' || userText === 'not now') {
-      response = "No problem! What else can I help you with today?";
+    let response = "I'm here to help with motorcycle issues! Tell me your bike model and what's wrong.";
+
+    try {
+      // 1. GREETINGS
+      if (userText.includes('hello') || userText.includes('hi') || userText.includes('/start')) {
+        response = priyaResponses.greeting[Math.floor(Math.random() * priyaResponses.greeting.length)];
+      }
+      // 2. HELP REQUESTS
+      else if (userText.includes('help') || userText.includes('support')) {
+        response = priyaResponses.help[Math.floor(Math.random() * priyaResponses.help.length)];
+      }
+      // 3. EMOTION DETECTION
+      else if (userText.includes('frustrated') || userText.includes('angry') || userText.includes('annoying')) {
+        response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
+      }
+      // 4. VIDEO SEARCH TRIGGER (When we have complete info)
+      else if (memory.model && memory.issue && (userText.includes('yes') || userText.includes('find') || userText.includes('video') || userText.includes('search'))) {
+        
+        const searchQuery = `${memory.model} ${memory.issue}`;
+        const videos = await searchYouTubeVideos(searchQuery);
+        
+        if (videos && videos.length > 0) {
+          response = `🎥 **I found these expert videos for your ${memory.model} ${memory.issue}:**\n\n`;
+          
+          videos.forEach((video, index) => {
+            response += `**${index + 1}. ${video.title}**\n`;
+            response += `📺 By: ${video.channel}\n`;
+            response += `🔗 Watch: https://youtube.com/watch?v=${video.videoId}\n\n`;
+          });
+          
+          response += `Which one looks most helpful? I can find more if needed! 😊`;
+          
+          // Clear memory after successful video delivery
+          clearMemory(chatId);
+        } else {
+          response = `I searched everywhere but couldn't find perfect videos for "${searchQuery}" right now. 😔\n\nTry searching YouTube directly, or tell me a different issue?`;
+          clearMemory(chatId);
+        }
+      }
+      // 5. COLLECT MOTORCYCLE MODEL
+      else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || userText.includes('honda') || userText.includes('yamaha') || userText.includes('bajaj') || userText.includes('royal enfield')) {
+        updateMemory(chatId, 'model', userText);
+        
+        // Brand clarification for Hayabusa
+        if (userText.includes('hayabusa') && userText.includes('kawasaki')) {
+          response = "I see you're working on a motorcycle! Just to clarify - the Hayabusa is actually Suzuki's model, not Kawasaki. But no worries! What specific issue are you having? I can find detailed repair videos! 🏍️";
+        } else {
+          response = `Excellent! You have a ${userText}. What specific issue are you experiencing? (e.g., spark plugs, oil change, brakes, electrical)`;
+        }
+      }
+      // 6. COLLECT ISSUE DESCRIPTION
+      else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise'))) {
+        updateMemory(chatId, 'issue', userText);
+        response = `Perfect! I understand: ${memory.model} with ${userText} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
+      }
+      // 7. YES/NO HANDLING
+      else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText === 'sure' || userText === 'ok') {
+        if (memory.model && memory.issue) {
+          response = `🎬 Searching for the best "${memory.model} ${memory.issue}" tutorials... This will take just a moment!`;
+        } else {
+          response = "I'd love to help! First, tell me your motorcycle model and what issue you're having.";
+        }
+      }
+      // 8. FALLBACK
+      else {
+        response = "I specialize in motorcycle repair videos! Tell me your bike model (e.g., Kawasaki Ninja) and what's wrong, and I'll find expert tutorials. 🏍️";
+      }
+
+      // Send response to user
+      await bot.sendMessage(chatId, response);
+      
+    } catch (error) {
+      console.log('Error processing message:', error);
+      await bot.sendMessage(chatId, "I'm having trouble connecting right now. Please try again in a moment! 😊");
     }
-    // 6. Brand detection with Hayabusa clarification
-    else if ((userText.includes('kawasaki') && userText.includes('hayabusa')) || userText === 'kawasaki hayabusa') {
-      response = "I see you're working on a motorcycle! Just to clarify - the Hayabusa is actually Suzuki's model, not Kawasaki. But no worries! What specific issue are you having? I can find detailed repair videos! 🏍️";
-    }
-    else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki')) {
-      const brand = userText.includes('kawasaki') ? "Kawasaki" : 
-                   userText.includes('ninja') ? "Ninja" : 
-                   userText.includes('hayabusa') ? "Hayabusa" : "Suzuki";
-      response = `I see you're working on a ${brand}! I specialize in motorcycle maintenance. What specific issue are you having? I can find detailed video guides! 🏍️`;
-    }
-    // 7. Motorcycle issues (general)
-    else if (userText.includes('spark plug') || userText.includes('motorcycle') || userText.includes('bike repair') || userText.includes('bike issue')) {
-      response = "I'd love to help with your motorcycle issue! 🏍️ For spark plugs, I recommend checking the gap and looking for fouling. Would you like me to find a video tutorial for your specific model?";
-    }
-    
-    // Send response back to user
-    bot.sendMessage(chatId, response).catch(error => {
-      console.log('Error sending message:', error);
-    });
   }
   
   res.sendStatus(200);
 });
 
-// Start server
+// ==================== START SERVER ====================
 app.listen(port, () => {
   console.log(`🚀 Priya bot server running on port ${port}`);
-  console.log(`🌐 Webhook URL: https://priya-assistant-1.onrender.com/webhook`);
+  console.log(`🎥 YouTube API: ACTIVE`);
+  console.log(`🧠 Memory System: ACTIVE`);
+  console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
+
+// Clean up old memory every hour (optional)
+setInterval(() => {
+  const now = Date.now();
+  for (const chatId in userMemory) {
+    if (now - userMemory[chatId].lastActive > 3600000) { // 1 hour
+      delete userMemory[chatId];
+    }
+  }
+}, 3600000);
