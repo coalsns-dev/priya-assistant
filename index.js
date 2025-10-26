@@ -43,6 +43,11 @@ app.get('/webhook', (req, res) => {
   res.send('Webhook is active! Priya is ready to assist. 🚀');
 });
 
+} else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText === 'sure' || userText === 'ok') {
+  response = "Perfect! 🎯 Tell me the exact model and year of your motorcycle, and I'll find the perfect video tutorial for you!";
+} else if (userText === 'no' || userText === 'nope' || userText === 'not now') {
+  response = "No problem! What else can I help you with today?";
+  
 // Webhook for Telegram - POST requests
 app.post('/webhook', (req, res) => {
   const message = req.body.message;
