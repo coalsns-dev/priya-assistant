@@ -7,10 +7,75 @@ const port = process.env.PORT || 3000;
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, {polling: false});
 
+// ==================== ENHANCED VEHICLE DETECTION ====================
+function detectVehicleType(userText) {
+  const vehicles = {
+    // Motorcycles
+    'motorcycle': ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda bike', 'yamaha bike', 'bajaj', 'royal enfield', 'bullet', 'pulsar', 'ducati', 'bmw bike', 'ktm', 'harley'],
+    
+    // Scooters
+    'scooter': ['vespa', 'activa', 'access', 'jupiter', 'ntorq', 'burgman', 'scooty', 'aviator', 'pleasure', 'maestro'],
+    
+    // Cars
+    'car': ['toyota', 'honda car', 'hyundai', 'maruti', 'ford', 'chevrolet', 'bmw car', 'mercedes', 'audi', 'volkswagen', 'skoda', 'tata', 'mahindra', 'renault', 'nissan', 'jeep'],
+    
+    // Electric Vehicles
+    'ev': ['tesla', 'tata nexon ev', 'mg zs ev', 'hyundai kona', 'electric car', 'ev bike', 'revolt', 'ather', 'ola electric', 'hero electric', 'kinetic', 'ev scooter', 'electric vehicle']
+  };
+
+  const text = userText.toLowerCase();
+  
+  for (const [type, keywords] of Object.entries(vehicles)) {
+    if (keywords.some(keyword => text.includes(keyword))) {
+      return type;
+    }
+  }
+  return 'vehicle'; // default
+}
+
+// ==================== ENHANCED ISSUE CATEGORIZATION ====================
+function categorizeVehicleIssue(userText, vehicleType) {
+  const issueCategories = {
+    // Common to all vehicles
+    'engine': ['engine', 'overheating', 'starting', 'stalling', 'knocking', 'smoke', 'compression', 'cylinder', 'piston'],
+    'electrical': ['battery', 'wiring', 'lights', 'ignition', 'spark', 'fuse', 'alternator', 'starter', 'horn'],
+    'transmission': ['gear', 'clutch', 'shifting', 'transmission', 'automatic', 'manual', 'gearbox'],
+    'brakes': ['brake', 'stopping', 'pedal', 'disc', 'drum', 'abs', 'braking'],
+    'suspension': ['suspension', 'shock', 'handle', 'steering', 'vibration', 'handlebar', 'wheel'],
+    'fuel': ['fuel', 'petrol', 'diesel', 'mileage', 'injection', 'carburetor', 'mpg', 'consumption'],
+    
+    // EV-specific issues
+    'ev_battery': ['battery range', 'charging time', 'battery life', 'range anxiety', 'battery health'],
+    'ev_charging': ['charging', 'charger', 'charging station', 'slow charging', 'fast charging', 'ac charger', 'dc charger'],
+    'ev_motor': ['motor', 'acceleration', 'power', 'torque', 'electric motor'],
+    'ev_software': ['software', 'update', 'glitch', 'display', 'touchscreen', 'app']
+  };
+
+  const text = userText.toLowerCase();
+
+  // EV-specific issues get priority for EVs
+  if (vehicleType === 'ev') {
+    for (const [category, keywords] of Object.entries(issueCategories)) {
+      if (category.startsWith('ev_') && keywords.some(keyword => text.includes(keyword))) {
+        return category;
+      }
+    }
+  }
+
+  // General issues for all vehicles
+  for (const [category, keywords] of Object.entries(issueCategories)) {
+    if (!category.startsWith('ev_') && keywords.some(keyword => text.includes(keyword))) {
+      return category;
+    }
+  }
+  
+  return 'general';
+}
+
 // ==================== YOUTUBE API FUNCTION ====================
 async function searchYouTubeVideos(query) {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=3&q=${encodeURIComponent(query + " motorcycle repair tutorial")}&type=video&key=${apiKey}&videoDuration=medium`;
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=3&q=${encodeURIComponent(query + " repair tutorial")}&type=video&key=${apiKey}&videoDuration=medium`;
   
   try {
     const response = await fetch(searchUrl);
@@ -48,53 +113,66 @@ function clearMemory(chatId) {
   delete userMemory[chatId];
 }
 
-// ==================== EXTRACT BIKE MODEL FROM TEXT ====================
-function extractBikeModel(userText) {
-  const brands = ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'bajaj', 'royal enfield', 'bullet', 'pulsar', 'ducati', 'bmw'];
-  const models = ['ninja', 'hayabusa', 'cbr', 'r15', 'mt', 'pulsar', 'apache', 'bullet', 'classic', 'continental'];
-  
+// ==================== EXTRACT VEHICLE MODEL ====================
+function extractVehicleModel(userText) {
+  const brands = {
+    'motorcycle': ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'bajaj', 'royal enfield', 'bullet', 'pulsar', 'ducati', 'bmw', 'ktm', 'harley'],
+    'scooter': ['vespa', 'activa', 'access', 'jupiter', 'ntorq', 'burgman', 'scooty', 'aviator', 'pleasure', 'maestro'],
+    'car': ['toyota', 'honda', 'hyundai', 'maruti', 'ford', 'chevrolet', 'bmw', 'mercedes', 'audi', 'volkswagen', 'skoda', 'tata', 'mahindra', 'renault', 'nissan', 'jeep'],
+    'ev': ['tesla', 'nexon ev', 'mg zs', 'kona', 'revolt', 'ather', 'ola', 'hero electric']
+  };
+
   let foundBrand = '';
   let foundModel = '';
-  
-  // Find brand
-  for (const brand of brands) {
-    if (userText.includes(brand)) {
-      foundBrand = brand;
-      break;
+  const text = userText.toLowerCase();
+
+  // Find brand across all vehicle types
+  for (const [type, typeBrands] of Object.entries(brands)) {
+    for (const brand of typeBrands) {
+      if (text.includes(brand) && brand.length > foundBrand.length) {
+        foundBrand = brand;
+      }
     }
   }
-  
-  // Find model
-  for (const model of models) {
-    if (userText.includes(model)) {
-      foundModel = model;
-      break;
+
+  // Basic model extraction (can be enhanced)
+  if (foundBrand) {
+    // Remove common phrases and extract model
+    const cleanText = text.replace(/i have a|my|is|having|issue|problem/g, '').trim();
+    const words = cleanText.split(' ');
+    const brandIndex = words.indexOf(foundBrand);
+    
+    if (brandIndex !== -1 && words[brandIndex + 1]) {
+      foundModel = words[brandIndex + 1];
     }
   }
-  
-  // Format nicely: "Kawasaki Ninja" instead of "kawasaki ninja"
+
+  // Format nicely
   if (foundBrand && foundModel) {
     return `${foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1)} ${foundModel.charAt(0).toUpperCase() + foundModel.slice(1)}`;
   } else if (foundBrand) {
     return foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1);
   }
   
-  return userText; // Fallback to original text
+  return userText;
 }
 
-// ==================== EXTRACT ISSUE FROM TEXT ====================
+// ==================== EXTRACT ISSUE ====================
 function extractIssue(userText) {
   const issues = {
     'spark': 'spark plug',
     'plug': 'spark plug', 
-    'engine': 'engine',
-    'brake': 'brake',
+    'engine': 'engine issue',
+    'brake': 'brake problem',
     'oil': 'oil change',
-    'electrical': 'electrical',
-    'starting': 'starting issue',
+    'electrical': 'electrical issue',
+    'starting': 'starting problem',
     'noise': 'unusual noise',
     'chain': 'chain maintenance',
-    'tire': 'tire issue'
+    'tire': 'tire issue',
+    'charging': 'charging problem',
+    'battery': 'battery issue',
+    'range': 'range anxiety'
   };
   
   for (const [key, issue] of Object.entries(issues)) {
@@ -103,25 +181,25 @@ function extractIssue(userText) {
     }
   }
   
-  return userText; // Fallback to original text
+  return userText;
 }
 
 // ==================== PRIYA'S PERSONALITY ====================
 const priyaResponses = {
   greeting: [
-    "Namaste! I'm Priya, your intelligent assistant. I can find video tutorials for any motorcycle issue! 🏍️",
-    "Hello there! I see a curious mind ready to explore. I specialize in finding exact repair videos for your bike! 🚀",
-    "Well hello! I was just organizing some brilliant video tutorials. What motorcycle issue can I help you solve today? 💫"
+    "Namaste! I'm Priya, your intelligent vehicle assistant. I can find solutions for cars, bikes, scooters, and EVs! 🚗🏍️🛵",
+    "Hello there! I see a curious mind ready to explore. I specialize in finding repair solutions for all types of vehicles! 🚀",
+    "Well hello! I was just organizing brilliant repair tutorials. What vehicle issue can I help you solve today? 💫"
   ],
   help: [
-    "I sense you need guidance! Tell me your motorcycle model and issue, and I'll find perfect video tutorials.",
-    "Don't worry, I'm here to help! What's your bike model and what problem are you facing?",
-    "Let's solve this together! Tell me your motorcycle details and the issue."
+    "I sense you need guidance! Tell me your vehicle type and issue, and I'll find perfect solutions.",
+    "Don't worry, I'm here to help! What's your vehicle and what problem are you facing?",
+    "Let's solve this together! Tell me your vehicle details and the issue."
   ],
   frustrated: [
     "I sense your frustration. Let's tackle this problem step by step - we've got this! 💪",
     "I understand it's frustrating. Take a deep breath and let me help you find the solution.",
-    "Technical issues can be annoying, but together we'll get through this. What's the main problem?"
+    "Vehicle issues can be annoying, but together we'll get through this. What's the main problem?"
   ]
 };
 
@@ -129,11 +207,11 @@ const priyaResponses = {
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.send('🚀 Priya Assistant is running with YouTube API!');
+  res.send('🚀 Priya Vehicle Assistant is running!');
 });
 
 app.get('/webhook', (req, res) => {
-  res.send('✅ Webhook is active! Priya is ready with video intelligence.');
+  res.send('✅ Webhook is active! Priya is ready for all vehicles.');
 });
 
 // ==================== TELEGRAM WEBHOOK HANDLER ====================
@@ -145,7 +223,7 @@ app.post('/webhook', async (req, res) => {
     const userText = message.text.toLowerCase();
     const memory = getMemory(chatId);
     
-    let response = "I'm here to help with motorcycle issues! Tell me your bike model and what's wrong.";
+    let response = "I'm here to help with vehicle issues! Tell me what vehicle you have and what's wrong.";
 
     try {
       // 1. GREETINGS
@@ -161,7 +239,7 @@ app.post('/webhook', async (req, res) => {
         response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
       }
       // 4. VIDEO SEARCH TRIGGER (When we have complete info)
-      else if (memory.model && memory.issue && (userText.includes('yes') || userText.includes('find') || userText.includes('video') || userText.includes('search'))) {
+      else if (memory.vehicleType && memory.model && memory.issue && (userText.includes('yes') || userText.includes('find') || userText.includes('video') || userText.includes('search'))) {
         
         const searchQuery = `${memory.model} ${memory.issue}`;
         const videos = await searchYouTubeVideos(searchQuery);
@@ -184,37 +262,50 @@ app.post('/webhook', async (req, res) => {
           clearMemory(chatId);
         }
       }
-      // 5. COLLECT MOTORCYCLE MODEL (FIXED VERSION)
-      else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || userText.includes('honda') || userText.includes('yamaha') || userText.includes('bajaj') || userText.includes('royal enfield')) {
+      // 5. COLLECT VEHICLE INFORMATION (ENHANCED)
+      else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || 
+               userText.includes('honda') || userText.includes('yamaha') || userText.includes('toyota') || userText.includes('hyundai') ||
+               userText.includes('ford') || userText.includes('tesla') || userText.includes('activa') || userText.includes('vespa') ||
+               userText.includes('electric') || userText.includes('ev') || userText.includes('scooter') || userText.includes('car')) {
         
-        const cleanModel = extractBikeModel(userText);
+        const vehicleType = detectVehicleType(userText);
+        const cleanModel = extractVehicleModel(userText);
+        
+        updateMemory(chatId, 'vehicleType', vehicleType);
         updateMemory(chatId, 'model', cleanModel);
         
-        // Brand clarification for Hayabusa
-        if (userText.includes('hayabusa') && userText.includes('kawasaki')) {
-          response = "I see you're working on a motorcycle! Just to clarify - the Hayabusa is actually Suzuki's model, not Kawasaki. But no worries! What specific issue are you having? I can find detailed repair videos! 🏍️";
+        // Vehicle-specific responses
+        if (vehicleType === 'ev') {
+          response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue are you experiencing? (e.g., charging, battery range, motor, software)`;
+        } else if (vehicleType === 'scooter') {
+          response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue are you experiencing? (e.g., starting, mileage, noise, electrical)`;
+        } else if (vehicleType === 'car') {
+          response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue are you experiencing? (e.g., engine, transmission, brakes, electrical)`;
         } else {
-          response = `Excellent! You have a ${cleanModel}. What specific issue are you experiencing? (e.g., spark plugs, oil change, brakes, electrical)`;
+          response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
         }
       }
-      // 6. COLLECT ISSUE DESCRIPTION (FIXED VERSION)
-      else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise'))) {
+      // 6. COLLECT ISSUE DESCRIPTION (ENHANCED)
+      else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || 
+                               userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise') ||
+                               userText.includes('charging') || userText.includes('battery') || userText.includes('range') || userText.includes('motor'))) {
         
         const cleanIssue = extractIssue(userText);
         updateMemory(chatId, 'issue', cleanIssue);
+        
         response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
       }
       // 7. YES/NO HANDLING
-      else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText === 'sure' || userText === 'ok') {
+      else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText.includes('search') || userText.includes('find')) {
         if (memory.model && memory.issue) {
           response = `🎬 Searching for the best "${memory.model} ${memory.issue}" tutorials... This will take just a moment!`;
         } else {
-          response = "I'd love to help! First, tell me your motorcycle model and what issue you're having.";
+          response = "I'd love to help! First, tell me your vehicle model and what issue you're having.";
         }
       }
       // 8. FALLBACK
       else {
-        response = "I specialize in motorcycle repair videos! Tell me your bike model (e.g., Kawasaki Ninja) and what's wrong, and I'll find expert tutorials. 🏍️";
+        response = "I specialize in vehicle repair solutions! Tell me your vehicle (car, bike, scooter, or EV) and what's wrong, and I'll find expert tutorials. 🚗🏍️🛵";
       }
 
       // Send response to user
@@ -231,9 +322,9 @@ app.post('/webhook', async (req, res) => {
 
 // ==================== START SERVER ====================
 app.listen(port, () => {
-  console.log(`🚀 Priya bot server running on port ${port}`);
+  console.log(`🚀 Priya Vehicle Assistant running on port ${port}`);
   console.log(`🎥 YouTube API: ACTIVE`);
-  console.log(`🧠 Memory System: ACTIVE`);
+  console.log(`🏍️ Vehicle Types: Motorcycles, Scooters, Cars, EVs`);
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
 
