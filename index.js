@@ -264,31 +264,7 @@ app.post('/webhook', async (req, res) => {
       else if (userText.includes('frustrated') || userText.includes('angry') || userText.includes('annoying')) {
         response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
       }
-      // 4. VIDEO SEARCH TRIGGER (When we have complete info)
-      else if (memory.vehicleType && memory.model && memory.issue && (userText.includes('yes') || userText.includes('find') || userText.includes('video') || userText.includes('search'))) {
-        
-        const searchQuery = `${memory.model} ${memory.issue}`;
-        const videos = await searchYouTubeVideos(searchQuery);
-        
-        if (videos && videos.length > 0) {
-          response = `🎥 **I found these expert videos for your ${memory.model} ${memory.issue}:**\n\n`;
-          
-          videos.forEach((video, index) => {
-            response += `**${index + 1}. ${video.title}**\n`;
-            response += `📺 By: ${video.channel}\n`;
-            response += `🔗 Watch: https://youtube.com/watch?v=${video.videoId}\n\n`;
-          });
-          
-          response += `Which one looks most helpful? I can find more if needed! 😊`;
-          
-          // Clear memory after successful video delivery
-          clearMemory(chatId);
-        } else {
-          response = `I searched everywhere but couldn't find perfect videos for "${searchQuery}" right now. 😔\n\nTry searching YouTube directly, or tell me a different issue?`;
-          clearMemory(chatId);
-        }
-      }
-      // 5. COMPLETE PROBLEM DETECTION (NEW - handles vehicle + issue in one message)
+      // 4. COMPLETE PROBLEM DETECTION (handles vehicle + issue in one message)
       else if (hasBothVehicleAndIssue(userText)) {
         const vehicleType = detectVehicleType(userText);
         const cleanModel = extractVehicleModel(userText);
@@ -316,6 +292,32 @@ app.post('/webhook', async (req, res) => {
           } else {
             response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
           }
+        }
+      }
+      // 5. VIDEO SEARCH TRIGGER (FIXED - handles ALL affirmative responses)
+      else if (memory.vehicleType && memory.model && memory.issue && 
+               (userText === 'yes' || userText === 'yep' || userText === 'yeah' || userText === 'search' || 
+                userText.includes('video') || userText.includes('find') || userText.includes('show'))) {
+        
+        const searchQuery = `${memory.model} ${memory.issue}`;
+        const videos = await searchYouTubeVideos(searchQuery);
+        
+        if (videos && videos.length > 0) {
+          response = `🎥 **I found these expert videos for your ${memory.model} ${memory.issue}:**\n\n`;
+          
+          videos.forEach((video, index) => {
+            response += `**${index + 1}. ${video.title}**\n`;
+            response += `📺 By: ${video.channel}\n`;
+            response += `🔗 Watch: https://youtube.com/watch?v=${video.videoId}\n\n`;
+          });
+          
+          response += `Which one looks most helpful? I can find more if needed! 😊`;
+          
+          // Clear memory after successful video delivery
+          clearMemory(chatId);
+        } else {
+          response = `I searched everywhere but couldn't find perfect videos for "${searchQuery}" right now. 😔\n\nTry searching YouTube directly, or tell me a different issue?`;
+          clearMemory(chatId);
         }
       }
       // 6. COLLECT VEHICLE INFORMATION ONLY
@@ -351,9 +353,10 @@ app.post('/webhook', async (req, res) => {
         
         response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
       }
-      // 8. YES/NO HANDLING
-      else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText.includes('search') || userText.includes('find')) {
+      // 8. AFFIRMATIVE RESPONSE WITHOUT COMPLETE INFO (FIXED)
+      else if (userText === 'yes' || userText === 'yep' || userText === 'yeah' || userText.includes('search') || userText.includes('find')) {
         if (memory.model && memory.issue) {
+          // This should trigger the video search in condition 5
           response = `🎬 Searching for the best "${memory.model} ${memory.issue}" tutorials... This will take just a moment!`;
         } else {
           response = "I'd love to help! First, tell me your vehicle model and what issue you're having.";
@@ -382,6 +385,7 @@ app.listen(port, () => {
   console.log(`🎥 YouTube API: ACTIVE`);
   console.log(`🏍️ Vehicle Types: Motorcycles, Scooters, Cars, EVs`);
   console.log(`🔧 Smart Detection: Vehicle + Issue in one message`);
+  console.log(`✅ Fixed: Yep/Yes handling`);
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
 
