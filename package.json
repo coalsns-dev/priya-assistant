@@ -1,7 +1,7 @@
 {
-  "name": "priya-telegram-bot",
+  "name": "priya-vehicle-assistant",
   "version": "1.0.0",
-  "description": "Intelligent forum assistant with emotion AI and YouTube video search",
+  "description": "Intelligent vehicle assistant for cars, bikes, scooters and EVs",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
