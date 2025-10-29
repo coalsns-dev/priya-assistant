@@ -113,7 +113,7 @@ function clearMemory(chatId) {
   delete userMemory[chatId];
 }
 
-// ==================== EXTRACT VEHICLE MODEL ====================
+// ==================== EXTRACT VEHICLE MODEL (FIXED VERSION) ====================
 function extractVehicleModel(userText) {
   const brands = {
     'motorcycle': ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'bajaj', 'royal enfield', 'bullet', 'pulsar', 'ducati', 'bmw', 'ktm', 'harley'],
@@ -122,10 +122,12 @@ function extractVehicleModel(userText) {
     'ev': ['tesla', 'nexon ev', 'mg zs', 'kona', 'revolt', 'ather', 'ola', 'hero electric']
   };
 
-  let foundBrand = '';
-  let foundModel = '';
+  // Common words to ignore when extracting model
+  const ignoreWords = ['has', 'have', 'is', 'are', 'my', 'the', 'a', 'an', 'with', 'having', 'issue', 'problem', 'not', 'now'];
+  
   const text = userText.toLowerCase();
-
+  let foundBrand = '';
+  
   // Find brand across all vehicle types
   for (const [type, typeBrands] of Object.entries(brands)) {
     for (const brand of typeBrands) {
@@ -135,23 +137,28 @@ function extractVehicleModel(userText) {
     }
   }
 
-  // Basic model extraction (can be enhanced)
   if (foundBrand) {
-    // Remove common phrases and extract model
-    const cleanText = text.replace(/i have a|my|is|having|issue|problem/g, '').trim();
-    const words = cleanText.split(' ');
-    const brandIndex = words.indexOf(foundBrand);
+    // Extract words after brand, but stop at ignore words
+    const brandIndex = text.indexOf(foundBrand);
+    const afterBrand = text.substring(brandIndex + foundBrand.length).trim();
+    const words = afterBrand.split(' ');
     
-    if (brandIndex !== -1 && words[brandIndex + 1]) {
-      foundModel = words[brandIndex + 1];
+    let modelExtension = '';
+    for (const word of words) {
+      if (ignoreWords.includes(word)) {
+        break; // Stop when we hit an ignore word
+      }
+      if (word.length > 0) {
+        modelExtension += ' ' + word;
+      }
     }
-  }
-
-  // Format nicely
-  if (foundBrand && foundModel) {
-    return `${foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1)} ${foundModel.charAt(0).toUpperCase() + foundModel.slice(1)}`;
-  } else if (foundBrand) {
-    return foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1);
+    
+    // If we found additional model info, include it
+    if (modelExtension.trim()) {
+      return `${foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1)}${modelExtension}`;
+    } else {
+      return foundBrand.charAt(0).toUpperCase() + foundBrand.slice(1);
+    }
   }
   
   return userText;
@@ -172,16 +179,35 @@ function extractIssue(userText) {
     'tire': 'tire issue',
     'charging': 'charging problem',
     'battery': 'battery issue',
-    'range': 'range anxiety'
+    'range': 'range anxiety',
+    'mileage': 'mileage issue',
+    'acceleration': 'acceleration problem',
+    'overheating': 'overheating'
   };
   
+  const text = userText.toLowerCase();
   for (const [key, issue] of Object.entries(issues)) {
-    if (userText.includes(key)) {
+    if (text.includes(key)) {
       return issue;
     }
   }
   
-  return userText;
+  return null; // Return null if no issue found
+}
+
+// ==================== CHECK IF MESSAGE HAS BOTH VEHICLE AND ISSUE ====================
+function hasBothVehicleAndIssue(userText) {
+  const vehicleKeywords = ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'toyota', 'hyundai',
+                          'ford', 'tesla', 'activa', 'vespa', 'electric', 'ev', 'scooter', 'car', 'bike'];
+  
+  const issueKeywords = ['spark', 'plug', 'engine', 'brake', 'oil', 'electrical', 'starting', 'noise',
+                        'charging', 'battery', 'range', 'motor', 'mileage', 'overheating', 'problem', 'issue'];
+  
+  const text = userText.toLowerCase();
+  const hasVehicle = vehicleKeywords.some(keyword => text.includes(keyword));
+  const hasIssue = issueKeywords.some(keyword => text.includes(keyword));
+  
+  return hasVehicle && hasIssue;
 }
 
 // ==================== PRIYA'S PERSONALITY ====================
@@ -262,7 +288,37 @@ app.post('/webhook', async (req, res) => {
           clearMemory(chatId);
         }
       }
-      // 5. COLLECT VEHICLE INFORMATION (ENHANCED)
+      // 5. COMPLETE PROBLEM DETECTION (NEW - handles vehicle + issue in one message)
+      else if (hasBothVehicleAndIssue(userText)) {
+        const vehicleType = detectVehicleType(userText);
+        const cleanModel = extractVehicleModel(userText);
+        const cleanIssue = extractIssue(userText);
+        
+        if (cleanModel && cleanIssue) {
+          updateMemory(chatId, 'vehicleType', vehicleType);
+          updateMemory(chatId, 'model', cleanModel);
+          updateMemory(chatId, 'issue', cleanIssue);
+          
+          response = `🎯 Perfect! I understand: ${cleanModel} with ${cleanIssue}. Should I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
+        } else {
+          // Fallback to separate collection if extraction fails
+          const vehicleType = detectVehicleType(userText);
+          const cleanModel = extractVehicleModel(userText);
+          updateMemory(chatId, 'vehicleType', vehicleType);
+          updateMemory(chatId, 'model', cleanModel);
+          
+          if (vehicleType === 'ev') {
+            response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue are you experiencing? (e.g., charging, battery range, motor, software)`;
+          } else if (vehicleType === 'scooter') {
+            response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue are you experiencing? (e.g., starting, mileage, noise, electrical)`;
+          } else if (vehicleType === 'car') {
+            response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue are you experiencing? (e.g., engine, transmission, brakes, electrical)`;
+          } else {
+            response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
+          }
+        }
+      }
+      // 6. COLLECT VEHICLE INFORMATION ONLY
       else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || 
                userText.includes('honda') || userText.includes('yamaha') || userText.includes('toyota') || userText.includes('hyundai') ||
                userText.includes('ford') || userText.includes('tesla') || userText.includes('activa') || userText.includes('vespa') ||
@@ -285,7 +341,7 @@ app.post('/webhook', async (req, res) => {
           response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
         }
       }
-      // 6. COLLECT ISSUE DESCRIPTION (ENHANCED)
+      // 7. COLLECT ISSUE DESCRIPTION ONLY
       else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || 
                                userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise') ||
                                userText.includes('charging') || userText.includes('battery') || userText.includes('range') || userText.includes('motor'))) {
@@ -295,7 +351,7 @@ app.post('/webhook', async (req, res) => {
         
         response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I find specific video tutorials for this? (Say YES or SEARCH VIDEOS)`;
       }
-      // 7. YES/NO HANDLING
+      // 8. YES/NO HANDLING
       else if (userText === 'yes' || userText === 'yeah' || userText === 'yep' || userText.includes('search') || userText.includes('find')) {
         if (memory.model && memory.issue) {
           response = `🎬 Searching for the best "${memory.model} ${memory.issue}" tutorials... This will take just a moment!`;
@@ -303,7 +359,7 @@ app.post('/webhook', async (req, res) => {
           response = "I'd love to help! First, tell me your vehicle model and what issue you're having.";
         }
       }
-      // 8. FALLBACK
+      // 9. FALLBACK
       else {
         response = "I specialize in vehicle repair solutions! Tell me your vehicle (car, bike, scooter, or EV) and what's wrong, and I'll find expert tutorials. 🚗🏍️🛵";
       }
@@ -325,6 +381,7 @@ app.listen(port, () => {
   console.log(`🚀 Priya Vehicle Assistant running on port ${port}`);
   console.log(`🎥 YouTube API: ACTIVE`);
   console.log(`🏍️ Vehicle Types: Motorcycles, Scooters, Cars, EVs`);
+  console.log(`🔧 Smart Detection: Vehicle + Issue in one message`);
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
 
