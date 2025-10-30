@@ -106,27 +106,46 @@ async function searchGoogleWeb(query, vehicleType) {
     return [];
   }
   
-  // Enhanced search query for better results
-  const searchQuery = `${query} ${vehicleType} repair guide forum solutions`;
-  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(searchQuery)}&num=5`;
+  // ENHANCED: Better search queries for forums
+  const searchQueries = [
+    `${query} ${vehicleType} forum discussion`,
+    `${query} ${vehicleType} community solutions`,
+    `${query} ${vehicleType} teambhp forum`,
+    `${query} ${vehicleType} repair guide`
+  ];
   
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
+  let allResults = [];
+  
+  // Try multiple search queries to get better results
+  for (const searchQuery of searchQueries) {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(searchQuery)}&num=5`;
     
-    if (data.items && data.items.length > 0) {
-      return data.items.map(item => ({
-        title: item.title,
-        link: item.link,
-        snippet: item.snippet,
-        source: 'web'
-      }));
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.items && data.items.length > 0) {
+        data.items.forEach(item => {
+          // Avoid duplicates
+          if (!allResults.some(existing => existing.link === item.link)) {
+            allResults.push({
+              title: item.title,
+              link: item.link,
+              snippet: item.snippet,
+              source: 'web'
+            });
+          }
+        });
+      }
+    } catch (error) {
+      console.log('Google Search failed for query:', searchQuery, error.message);
     }
-    return [];
-  } catch (error) {
-    console.log('Google Search failed:', error.message);
-    return [];
+    
+    // Small delay between requests
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
+  
+  return allResults.slice(0, 8); // Return max 8 results
 }
 
 // ==================== UNIVERSAL SEARCH FUNCTION ====================
@@ -144,18 +163,25 @@ async function searchUniversalSolutions(query, vehicleType) {
     // 1. YouTube Search (Existing - Working)
     const youtubeResults = await searchYouTubeVideos(query);
     if (youtubeResults && youtubeResults.length > 0) {
-      searchResults.videos = youtubeResults.slice(0, 3); // Top 3 videos
+      searchResults.videos = youtubeResults.slice(0, 3);
     }
     
     // 2. Google Web Search (NEW - Internet Wide)
     const webResults = await searchGoogleWeb(query, vehicleType);
     if (webResults && webResults.length > 0) {
-      // Categorize web results
+      // ENHANCED: Better categorization
       webResults.forEach(result => {
-        if (result.link.includes('stackoverflow') || result.link.includes('github')) {
+        const link = result.link.toLowerCase();
+        const title = result.title.toLowerCase();
+        
+        if (link.includes('stackoverflow') || link.includes('github') || link.includes('technical')) {
           searchResults.technical.push(result);
-        } else if (result.link.includes('forum') || result.link.includes('community') || result.link.includes('teambhp') || result.link.includes('reddit')) {
+        } else if (link.includes('forum') || link.includes('community') || link.includes('teambhp') || 
+                   link.includes('reddit') || link.includes('discussion') || title.includes('forum')) {
           searchResults.forums.push(result);
+        } else if (link.includes('blog') || link.includes('article') || link.includes('guide') || 
+                   title.includes('how to') || title.includes('guide')) {
+          searchResults.articles.push(result);
         } else {
           searchResults.articles.push(result);
         }
@@ -173,7 +199,7 @@ async function searchUniversalSolutions(query, vehicleType) {
 
 // ==================== GENERATE UNIVERSAL RESPONSE ====================
 function generateUniversalResponse(searchResults, userQuery, vehicleType) {
-  let response = `🔧 **Universal Solutions for your ${vehicleType}**\n\n`;
+  let response = `🔧 **Universal Solutions for ${userQuery}**\n\n`;
   
   let hasContent = false;
 
@@ -187,12 +213,14 @@ function generateUniversalResponse(searchResults, userQuery, vehicleType) {
     });
   }
   
-  // Forum Results
+  // Forum Results - PRIORITIZE FORUMS
   if (searchResults.forums.length > 0) {
     hasContent = true;
     response += `🌐 **Forum Discussions:**\n`;
-    searchResults.forums.slice(0, 2).forEach((forum, index) => {
-      response += `${index + 1}. ${forum.title}\n`;
+    searchResults.forums.slice(0, 3).forEach((forum, index) => {
+      // Shorten long titles
+      const shortTitle = forum.title.length > 60 ? forum.title.substring(0, 60) + '...' : forum.title;
+      response += `${index + 1}. ${shortTitle}\n`;
       response += `   👉 ${forum.link}\n\n`;
     });
   }
@@ -202,23 +230,25 @@ function generateUniversalResponse(searchResults, userQuery, vehicleType) {
     hasContent = true;
     response += `💻 **Technical Solutions:**\n`;
     searchResults.technical.slice(0, 2).forEach((tech, index) => {
-      response += `${index + 1}. ${tech.title}\n`;
+      const shortTitle = tech.title.length > 60 ? tech.title.substring(0, 60) + '...' : tech.title;
+      response += `${index + 1}. ${shortTitle}\n`;
       response += `   👉 ${tech.link}\n\n`;
     });
   }
   
   // Web Articles
-  if (searchResults.articles.length > 0 && searchResults.videos.length === 0) {
+  if (searchResults.articles.length > 0 && searchResults.forums.length === 0) {
     hasContent = true;
     response += `📖 **Helpful Articles:**\n`;
     searchResults.articles.slice(0, 2).forEach((article, index) => {
-      response += `${index + 1}. ${article.title}\n`;
+      const shortTitle = article.title.length > 60 ? article.title.substring(0, 60) + '...' : article.title;
+      response += `${index + 1}. ${shortTitle}\n`;
       response += `   👉 ${article.link}\n\n`;
     });
   }
   
   if (!hasContent) {
-    response = "I searched across videos, forums, and technical sites but couldn't find specific solutions. Try rephrasing or ask about a different vehicle issue!";
+    response = `I searched across videos, forums, and technical sites but couldn't find specific solutions for "${userQuery}".\n\nTry:\n• Rephrasing your question\n• Being more specific about the issue\n• Asking about a different vehicle problem`;
   }
   
   return response;
@@ -251,7 +281,7 @@ function extractVehicleModel(userText) {
   };
 
   // Common words to ignore when extracting model
-  const ignoreWords = ['has', 'have', 'is', 'are', 'my', 'the', 'a', 'an', 'with', 'having', 'issue', 'problem', 'not', 'now'];
+  const ignoreWords = ['has', 'have', 'is', 'are', 'my', 'the', 'a', 'an', 'with', 'having', 'issue', 'problem', 'not', 'now', 'electrical', 'engine', 'brake', 'charging', 'battery'];
   
   const text = userText.toLowerCase();
   let foundBrand = '';
@@ -289,47 +319,53 @@ function extractVehicleModel(userText) {
     }
   }
   
-  return userText;
+  return 'vehicle';
 }
 
-// ==================== EXTRACT ISSUE ====================
+// ==================== EXTRACT ISSUE (FIXED VERSION) ====================
 function extractIssue(userText) {
   const issues = {
-    'spark': 'spark plug',
-    'plug': 'spark plug', 
-    'engine': 'engine issue',
-    'brake': 'brake problem',
-    'oil': 'oil change',
-    'electrical': 'electrical issue',
-    'starting': 'starting problem',
-    'noise': 'unusual noise',
-    'chain': 'chain maintenance',
-    'tire': 'tire issue',
-    'charging': 'charging problem',
-    'battery': 'battery issue',
-    'range': 'range anxiety',
-    'mileage': 'mileage issue',
-    'acceleration': 'acceleration problem',
-    'overheating': 'overheating'
+    'spark plug': ['spark', 'plug'],
+    'engine issue': ['engine', 'overheating', 'starting', 'stalling', 'knocking'],
+    'brake problem': ['brake', 'stopping', 'pedal', 'disc', 'drum'],
+    'oil issue': ['oil', 'lubricant', 'lubrication'],
+    'electrical problem': ['electrical', 'wiring', 'lights', 'ignition', 'battery', 'fuse', 'alternator'],
+    'starting problem': ['starting', 'crank'],
+    'unusual noise': ['noise', 'sound', 'knocking', 'rattling'],
+    'chain maintenance': ['chain', 'sprocket'],
+    'tire issue': ['tire', 'tyre', 'wheel'],
+    'charging problem': ['charging', 'charger'],
+    'battery issue': ['battery', 'power'],
+    'range anxiety': ['range', 'mileage', 'distance'],
+    'mileage issue': ['mileage', 'fuel efficiency', 'consumption'],
+    'acceleration problem': ['acceleration', 'power', 'torque'],
+    'overheating': ['overheating', 'heat', 'temperature']
   };
   
   const text = userText.toLowerCase();
-  for (const [key, issue] of Object.entries(issues)) {
-    if (text.includes(key)) {
+  
+  // Find the most specific issue match
+  for (const [issue, keywords] of Object.entries(issues)) {
+    if (keywords.some(keyword => text.includes(keyword))) {
       return issue;
     }
   }
   
-  return null; // Return null if no issue found
+  // If no specific issue found, return general problem
+  if (text.includes('problem') || text.includes('issue') || text.includes('help')) {
+    return 'general problem';
+  }
+  
+  return null;
 }
 
 // ==================== CHECK IF MESSAGE HAS BOTH VEHICLE AND ISSUE ====================
 function hasBothVehicleAndIssue(userText) {
   const vehicleKeywords = ['kawasaki', 'ninja', 'hayabusa', 'suzuki', 'honda', 'yamaha', 'toyota', 'hyundai',
-                          'ford', 'tesla', 'activa', 'vespa', 'electric', 'ev', 'scooter', 'car', 'bike'];
+                          'ford', 'tesla', 'activa', 'vespa', 'electric', 'ev', 'scooter', 'car', 'bike', 'vehicle'];
   
   const issueKeywords = ['spark', 'plug', 'engine', 'brake', 'oil', 'electrical', 'starting', 'noise',
-                        'charging', 'battery', 'range', 'motor', 'mileage', 'overheating', 'problem', 'issue'];
+                        'charging', 'battery', 'range', 'motor', 'mileage', 'overheating', 'problem', 'issue', 'help'];
   
   const text = userText.toLowerCase();
   const hasVehicle = vehicleKeywords.some(keyword => text.includes(keyword));
@@ -374,22 +410,23 @@ app.post('/webhook', async (req, res) => {
   
   if (message && message.text) {
     const chatId = message.chat.id;
-    const userText = message.text.toLowerCase();
+    const userText = message.text;
+    const userTextLower = userText.toLowerCase();
     const memory = getMemory(chatId);
     
     let response = "I'm here to help with vehicle issues! Tell me what vehicle you have and what's wrong - I'll search everywhere for solutions.";
 
     try {
       // 1. GREETINGS
-      if (userText.includes('hello') || userText.includes('hi') || userText.includes('/start')) {
+      if (userTextLower.includes('hello') || userTextLower.includes('hi') || userTextLower.includes('/start')) {
         response = priyaResponses.greeting[Math.floor(Math.random() * priyaResponses.greeting.length)];
       }
       // 2. HELP REQUESTS
-      else if (userText.includes('help') || userText.includes('support')) {
+      else if (userTextLower.includes('help') || userTextLower.includes('support')) {
         response = priyaResponses.help[Math.floor(Math.random() * priyaResponses.help.length)];
       }
       // 3. EMOTION DETECTION
-      else if (userText.includes('frustrated') || userText.includes('angry') || userText.includes('annoying')) {
+      else if (userTextLower.includes('frustrated') || userTextLower.includes('angry') || userTextLower.includes('annoying')) {
         response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
       }
       // 4. COMPLETE PROBLEM DETECTION (handles vehicle + issue in one message)
@@ -402,6 +439,7 @@ app.post('/webhook', async (req, res) => {
           updateMemory(chatId, 'vehicleType', vehicleType);
           updateMemory(chatId, 'model', cleanModel);
           updateMemory(chatId, 'issue', cleanIssue);
+          updateMemory(chatId, 'originalQuery', userText); // Store original query for better search
           
           response = `🎯 Perfect! I understand: ${cleanModel} with ${cleanIssue}. Should I search across videos, forums, and technical sites for solutions? (Say YES or SEARCH)`;
         } else {
@@ -410,6 +448,7 @@ app.post('/webhook', async (req, res) => {
           const cleanModel = extractVehicleModel(userText);
           updateMemory(chatId, 'vehicleType', vehicleType);
           updateMemory(chatId, 'model', cleanModel);
+          updateMemory(chatId, 'originalQuery', userText);
           
           if (vehicleType === 'ev') {
             response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue are you experiencing? (e.g., charging, battery range, motor, software)`;
@@ -422,42 +461,73 @@ app.post('/webhook', async (req, res) => {
           }
         }
       }
-      // 5. UNIVERSAL SEARCH TRIGGER (UPDATED - handles ALL affirmative responses)
+      // 5. UNIVERSAL SEARCH TRIGGER (FIXED - NO MEMORY CLEARING UNTIL AFTER SEARCH)
       else if (memory.vehicleType && memory.model && memory.issue && 
-               (userText === 'yes' || userText === 'yep' || userText === 'yeah' || userText === 'search' || 
-                userText.includes('video') || userText.includes('find') || userText.includes('show') || userText.includes('go'))) {
+               (userTextLower === 'yes' || userTextLower === 'yep' || userTextLower === 'yeah' || userTextLower === 'search' || 
+                userTextLower.includes('video') || userTextLower.includes('find') || userTextLower.includes('show') || userTextLower.includes('go'))) {
         
-        const searchQuery = `${memory.model} ${memory.issue}`;
+        // Use original query if available, otherwise build from memory
+        const searchQuery = memory.originalQuery || `${memory.model} ${memory.issue}`;
+        
         response = `🔍 **Searching across the entire internet for "${searchQuery}"...**\n\nThis might take a moment as I check videos, forums, and technical sites!`;
         
         // Send immediate response that we're searching
         await bot.sendMessage(chatId, response);
         
-        // Perform the actual search
+        // Perform the actual search (DO NOT CLEAR MEMORY YET)
         const universalResults = await searchUniversalSolutions(searchQuery, memory.vehicleType);
         const finalResponse = generateUniversalResponse(universalResults, searchQuery, memory.vehicleType);
         
         // Send the search results
         await bot.sendMessage(chatId, finalResponse);
         
-        // Clear memory after successful search delivery
+        // ONLY NOW clear memory after successful search delivery
         clearMemory(chatId);
         
         // Return early since we already sent responses
         res.sendStatus(200);
         return;
       }
-      // 6. COLLECT VEHICLE INFORMATION ONLY
-      else if (userText.includes('kawasaki') || userText.includes('ninja') || userText.includes('hayabusa') || userText.includes('suzuki') || 
-               userText.includes('honda') || userText.includes('yamaha') || userText.includes('toyota') || userText.includes('hyundai') ||
-               userText.includes('ford') || userText.includes('tesla') || userText.includes('activa') || userText.includes('vespa') ||
-               userText.includes('electric') || userText.includes('ev') || userText.includes('scooter') || userText.includes('car')) {
+      // 6. SPECIFIC FORUM REQUEST (NEW FEATURE)
+      else if (userTextLower.includes('forum') || userTextLower.includes('discussion') || userTextLower.includes('community')) {
+        if (memory.model && memory.issue) {
+          const searchQuery = memory.originalQuery || `${memory.model} ${memory.issue}`;
+          response = `🔍 **Searching specifically in forums for "${searchQuery}"...**`;
+          
+          await bot.sendMessage(chatId, response);
+          
+          const universalResults = await searchUniversalSolutions(searchQuery + " forum", memory.vehicleType);
+          
+          // Filter to show only forums
+          const forumResults = {
+            videos: [],
+            articles: [],
+            forums: universalResults.forums,
+            technical: universalResults.technical.filter(t => t.link.includes('stackoverflow'))
+          };
+          
+          const forumResponse = generateUniversalResponse(forumResults, searchQuery, memory.vehicleType);
+          await bot.sendMessage(chatId, forumResponse);
+          clearMemory(chatId);
+          
+          res.sendStatus(200);
+          return;
+        } else {
+          response = "I'd be happy to search forums! First, tell me your vehicle model and what issue you're having.";
+        }
+      }
+      // 7. COLLECT VEHICLE INFORMATION ONLY
+      else if (userTextLower.includes('kawasaki') || userTextLower.includes('ninja') || userTextLower.includes('hayabusa') || userTextLower.includes('suzuki') || 
+               userTextLower.includes('honda') || userTextLower.includes('yamaha') || userTextLower.includes('toyota') || userTextLower.includes('hyundai') ||
+               userTextLower.includes('ford') || userTextLower.includes('tesla') || userTextLower.includes('activa') || userTextLower.includes('vespa') ||
+               userTextLower.includes('electric') || userTextLower.includes('ev') || userTextLower.includes('scooter') || userTextLower.includes('car')) {
         
         const vehicleType = detectVehicleType(userText);
         const cleanModel = extractVehicleModel(userText);
         
         updateMemory(chatId, 'vehicleType', vehicleType);
         updateMemory(chatId, 'model', cleanModel);
+        updateMemory(chatId, 'originalQuery', userText);
         
         // Vehicle-specific responses
         if (vehicleType === 'ev') {
@@ -470,18 +540,19 @@ app.post('/webhook', async (req, res) => {
           response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
         }
       }
-      // 7. COLLECT ISSUE DESCRIPTION ONLY
-      else if (memory.model && (userText.includes('spark') || userText.includes('plug') || userText.includes('engine') || userText.includes('brake') || 
-                               userText.includes('oil') || userText.includes('electrical') || userText.includes('starting') || userText.includes('noise') ||
-                               userText.includes('charging') || userText.includes('battery') || userText.includes('range') || userText.includes('motor'))) {
+      // 8. COLLECT ISSUE DESCRIPTION ONLY
+      else if (memory.model && (userTextLower.includes('spark') || userTextLower.includes('plug') || userTextLower.includes('engine') || userTextLower.includes('brake') || 
+                               userTextLower.includes('oil') || userTextLower.includes('electrical') || userTextLower.includes('starting') || userTextLower.includes('noise') ||
+                               userTextLower.includes('charging') || userTextLower.includes('battery') || userTextLower.includes('range') || userTextLower.includes('motor'))) {
         
         const cleanIssue = extractIssue(userText);
         updateMemory(chatId, 'issue', cleanIssue);
+        updateMemory(chatId, 'originalQuery', `${memory.model} ${userText}`);
         
         response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I search across videos, forums, and technical sites for solutions? (Say YES or SEARCH)`;
       }
-      // 8. AFFIRMATIVE RESPONSE WITHOUT COMPLETE INFO (FIXED)
-      else if (userText === 'yes' || userText === 'yep' || userText === 'yeah' || userText.includes('search') || userText.includes('find')) {
+      // 9. AFFIRMATIVE RESPONSE WITHOUT COMPLETE INFO (FIXED)
+      else if (userTextLower === 'yes' || userTextLower === 'yep' || userTextLower === 'yeah' || userTextLower.includes('search') || userTextLower.includes('find')) {
         if (memory.model && memory.issue) {
           // This should trigger the universal search in condition 5
           response = `🔍 Searching across the entire internet for "${memory.model} ${memory.issue}"... This might take a moment!`;
@@ -489,7 +560,7 @@ app.post('/webhook', async (req, res) => {
           response = "I'd love to help! First, tell me your vehicle model and what issue you're having.";
         }
       }
-      // 9. FALLBACK
+      // 10. FALLBACK
       else {
         response = "I specialize in vehicle repair solutions across the entire internet! Tell me your vehicle (car, bike, scooter, or EV) and what's wrong, and I'll search everywhere for expert solutions. 🚗🏍️🛵";
       }
@@ -514,6 +585,7 @@ app.listen(port, () => {
   console.log(`🏍️ Vehicle Types: Motorcycles, Scooters, Cars, EVs`);
   console.log(`🔧 Smart Detection: Vehicle + Issue in one message`);
   console.log(`🔍 Search Sources: Videos + Forums + Technical Sites`);
+  console.log(`🔄 Memory Management: FIXED`);
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
 
