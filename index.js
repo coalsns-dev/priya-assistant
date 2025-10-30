@@ -26,6 +26,45 @@ function detectVehicleType(userText) {
   return 'vehicle';
 }
 
+// ==================== ENHANCED ISSUE CATEGORIZATION ====================
+function categorizeVehicleIssue(userText, vehicleType) {
+  const issueCategories = {
+    // Common to all vehicles
+    'engine': ['engine', 'overheating', 'starting', 'stalling', 'knocking', 'smoke', 'compression', 'cylinder', 'piston'],
+    'electrical': ['battery', 'wiring', 'lights', 'ignition', 'spark', 'fuse', 'alternator', 'starter', 'horn'],
+    'transmission': ['gear', 'clutch', 'shifting', 'transmission', 'automatic', 'manual', 'gearbox'],
+    'brakes': ['brake', 'stopping', 'pedal', 'disc', 'drum', 'abs', 'braking'],
+    'suspension': ['suspension', 'shock', 'handle', 'steering', 'vibration', 'handlebar', 'wheel'],
+    'fuel': ['fuel', 'petrol', 'diesel', 'mileage', 'injection', 'carburetor', 'mpg', 'consumption'],
+    
+    // EV-specific issues
+    'ev_battery': ['battery range', 'charging time', 'battery life', 'range anxiety', 'battery health'],
+    'ev_charging': ['charging', 'charger', 'charging station', 'slow charging', 'fast charging', 'ac charger', 'dc charger'],
+    'ev_motor': ['motor', 'acceleration', 'power', 'torque', 'electric motor'],
+    'ev_software': ['software', 'update', 'glitch', 'display', 'touchscreen', 'app']
+  };
+
+  const text = userText.toLowerCase();
+
+  // EV-specific issues get priority for EVs
+  if (vehicleType === 'ev') {
+    for (const [category, keywords] of Object.entries(issueCategories)) {
+      if (category.startsWith('ev_') && keywords.some(keyword => text.includes(keyword))) {
+        return category;
+      }
+    }
+  }
+
+  // General issues for all vehicles
+  for (const [category, keywords] of Object.entries(issueCategories)) {
+    if (!category.startsWith('ev_') && keywords.some(keyword => text.includes(keyword))) {
+      return category;
+    }
+  }
+  
+  return 'general';
+}
+
 // ==================== YOUTUBE API FUNCTION ====================
 async function searchYouTubeVideos(query) {
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -110,47 +149,8 @@ async function searchGoogleWeb(query, vehicleType) {
   // Sort by relevance and return
   return allResults.sort((a, b) => (b.relevance || 0) - (a.relevance || 0)).slice(0, 6);
 }
-  // SIMPLIFIED: Use one effective search query
-  const searchQuery = `${query} ${vehicleType} forum discussion site:teambhp.com OR site:reddit.com OR site:quora.com`;
-  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(searchQuery)}&num=5`;
-  
-  console.log(`🔍 Google Search URL:`, url);
-  
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    console.log(`🔍 Google Search Response:`, {
-      status: response.status,
-      itemsFound: data.items ? data.items.length : 0,
-      error: data.error
-    });
-    
-    if (data.error) {
-      console.log('❌ Google Search API Error:', data.error);
-      return [];
-    }
-    
-    if (data.items && data.items.length > 0) {
-      const results = data.items.map(item => ({
-        title: item.title,
-        link: item.link,
-        snippet: item.snippet,
-        source: 'web'
-      }));
-      console.log(`✅ Google Search Found: ${results.length} results`);
-      return results;
-    }
-    
-    console.log('❌ Google Search: No items found');
-    return [];
-  } catch (error) {
-    console.log('❌ Google Search Failed:', error.message);
-    return [];
-  }
-}
 
-// ==================== UNIVERSAL SEARCH FUNCTION - SIMPLIFIED ====================
+// ==================== UNIVERSAL SEARCH FUNCTION ====================
 async function searchUniversalSolutions(query, vehicleType) {
   console.log(`🔍 Universal search for: ${query} (${vehicleType})`);
   
@@ -168,7 +168,7 @@ async function searchUniversalSolutions(query, vehicleType) {
       searchResults.videos = youtubeResults.slice(0, 3);
     }
     
-    // 2. Google Web Search (DEBUG MODE)
+    // 2. Google Web Search (OPTIMIZED)
     console.log(`🔍 Starting Google Search...`);
     const webResults = await searchGoogleWeb(query, vehicleType);
     console.log(`🔍 Google Search Completed: ${webResults.length} results`);
@@ -177,7 +177,7 @@ async function searchUniversalSolutions(query, vehicleType) {
       webResults.forEach(result => {
         const link = result.link.toLowerCase();
         
-        if (link.includes('teambhp.com') || link.includes('reddit.com') || link.includes('forum')) {
+        if (link.includes('teambhp.com') || link.includes('reddit.com') || link.includes('forum') || link.includes('xbhp.com')) {
           searchResults.forums.push(result);
         } else if (link.includes('stackoverflow.com') || link.includes('github.com')) {
           searchResults.technical.push(result);
@@ -368,6 +368,16 @@ const priyaResponses = {
     "Namaste! I'm Priya, your intelligent vehicle assistant. I can find solutions across the entire internet! 🚗🏍️🛵",
     "Hello there! I see a curious mind ready to explore. I search videos, forums, and technical sites for the best solutions! 🚀",
     "Well hello! I was just organizing brilliant repair solutions from across the web. What vehicle issue can I help you solve today? 💫"
+  ],
+  help: [
+    "I sense you need guidance! Tell me your vehicle type and issue, and I'll search the entire internet for solutions.",
+    "Don't worry, I'm here to help! I can search videos, forums, and technical sites. What's your vehicle and problem?",
+    "Let's solve this together! Tell me your vehicle details and the issue - I'll search everywhere for answers."
+  ],
+  frustrated: [
+    "I sense your frustration. Let's tackle this problem step by step - we've got this! 💪",
+    "I understand it's frustrating. Take a deep breath and let me help you find the solution across multiple sources.",
+    "Vehicle issues can be annoying, but together we'll search everywhere for the right answer. What's the main problem?"
   ]
 };
 
@@ -399,7 +409,15 @@ app.post('/webhook', async (req, res) => {
       if (userTextLower.includes('hello') || userTextLower.includes('hi') || userTextLower.includes('/start')) {
         response = priyaResponses.greeting[Math.floor(Math.random() * priyaResponses.greeting.length)];
       }
-      // 2. COMPLETE PROBLEM DETECTION
+      // 2. HELP REQUESTS
+      else if (userTextLower.includes('help') || userTextLower.includes('support')) {
+        response = priyaResponses.help[Math.floor(Math.random() * priyaResponses.help.length)];
+      }
+      // 3. EMOTION DETECTION
+      else if (userTextLower.includes('frustrated') || userTextLower.includes('angry') || userTextLower.includes('annoying')) {
+        response = priyaResponses.frustrated[Math.floor(Math.random() * priyaResponses.frustrated.length)];
+      }
+      // 4. COMPLETE PROBLEM DETECTION (handles vehicle + issue in one message)
       else if (hasBothVehicleAndIssue(userText)) {
         const vehicleType = detectVehicleType(userText);
         const cleanModel = extractVehicleModel(userText);
@@ -413,6 +431,7 @@ app.post('/webhook', async (req, res) => {
           
           response = `🎯 Perfect! I understand: ${cleanModel} with ${cleanIssue}. Should I search across videos, forums, and technical sites for solutions? (Say YES or SEARCH)`;
         } else {
+          // Fallback to separate collection if extraction fails
           const vehicleType = detectVehicleType(userText);
           const cleanModel = extractVehicleModel(userText);
           updateMemory(chatId, 'vehicleType', vehicleType);
@@ -420,37 +439,72 @@ app.post('/webhook', async (req, res) => {
           updateMemory(chatId, 'originalQuery', userText);
           
           if (vehicleType === 'ev') {
-            response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue?`;
+            response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue are you experiencing? (e.g., charging, battery range, motor, software)`;
           } else if (vehicleType === 'scooter') {
-            response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue?`;
+            response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue are you experiencing? (e.g., starting, mileage, noise, electrical)`;
           } else if (vehicleType === 'car') {
-            response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue?`;
+            response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue are you experiencing? (e.g., engine, transmission, brakes, electrical)`;
           } else {
-            response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue?`;
+            response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
           }
         }
       }
-      // 3. UNIVERSAL SEARCH TRIGGER
+      // 5. UNIVERSAL SEARCH TRIGGER (FIXED - NO MEMORY CLEARING UNTIL AFTER SEARCH)
       else if (memory.vehicleType && memory.model && memory.issue && 
                (userTextLower === 'yes' || userTextLower === 'yep' || userTextLower === 'yeah' || userTextLower === 'search' || 
                 userTextLower.includes('video') || userTextLower.includes('find') || userTextLower.includes('show') || userTextLower.includes('go'))) {
         
+        // Use original query if available, otherwise build from memory
         const searchQuery = memory.originalQuery || `${memory.model} ${memory.issue}`;
         
         response = `🔍 **Searching across the entire internet for "${searchQuery}"...**\n\nThis might take a moment as I check videos, forums, and technical sites!`;
         
+        // Send immediate response that we're searching
         await bot.sendMessage(chatId, response);
         
+        // Perform the actual search (DO NOT CLEAR MEMORY YET)
         const universalResults = await searchUniversalSolutions(searchQuery, memory.vehicleType);
         const finalResponse = generateUniversalResponse(universalResults, searchQuery, memory.vehicleType);
         
+        // Send the search results
         await bot.sendMessage(chatId, finalResponse);
+        
+        // ONLY NOW clear memory after successful search delivery
         clearMemory(chatId);
         
+        // Return early since we already sent responses
         res.sendStatus(200);
         return;
       }
-      // 4. COLLECT VEHICLE INFORMATION
+      // 6. SPECIFIC FORUM REQUEST (NEW FEATURE)
+      else if (userTextLower.includes('forum') || userTextLower.includes('discussion') || userTextLower.includes('community')) {
+        if (memory.model && memory.issue) {
+          const searchQuery = memory.originalQuery || `${memory.model} ${memory.issue}`;
+          response = `🔍 **Searching specifically in forums for "${searchQuery}"...`;
+          
+          await bot.sendMessage(chatId, response);
+          
+          const universalResults = await searchUniversalSolutions(searchQuery + " forum", memory.vehicleType);
+          
+          // Filter to show only forums
+          const forumResults = {
+            videos: [],
+            articles: [],
+            forums: universalResults.forums,
+            technical: universalResults.technical.filter(t => t.link.includes('stackoverflow'))
+          };
+          
+          const forumResponse = generateUniversalResponse(forumResults, searchQuery, memory.vehicleType);
+          await bot.sendMessage(chatId, forumResponse);
+          clearMemory(chatId);
+          
+          res.sendStatus(200);
+          return;
+        } else {
+          response = "I'd be happy to search forums! First, tell me your vehicle model and what issue you're having.";
+        }
+      }
+      // 7. COLLECT VEHICLE INFORMATION ONLY
       else if (userTextLower.includes('kawasaki') || userTextLower.includes('ninja') || userTextLower.includes('hayabusa') || userTextLower.includes('suzuki') || 
                userTextLower.includes('honda') || userTextLower.includes('yamaha') || userTextLower.includes('toyota') || userTextLower.includes('hyundai') ||
                userTextLower.includes('ford') || userTextLower.includes('tesla') || userTextLower.includes('activa') || userTextLower.includes('vespa') ||
@@ -463,17 +517,18 @@ app.post('/webhook', async (req, res) => {
         updateMemory(chatId, 'model', cleanModel);
         updateMemory(chatId, 'originalQuery', userText);
         
+        // Vehicle-specific responses
         if (vehicleType === 'ev') {
-          response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue?`;
+          response = `⚡ Excellent! You have an electric vehicle (${cleanModel}). What specific issue are you experiencing? (e.g., charging, battery range, motor, software)`;
         } else if (vehicleType === 'scooter') {
-          response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue?`;
+          response = `🛵 Excellent! You have a scooter (${cleanModel}). What specific issue are you experiencing? (e.g., starting, mileage, noise, electrical)`;
         } else if (vehicleType === 'car') {
-          response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue?`;
+          response = `🚗 Excellent! You have a car (${cleanModel}). What specific issue are you experiencing? (e.g., engine, transmission, brakes, electrical)`;
         } else {
-          response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue?`;
+          response = `🏍️ Excellent! You have a motorcycle (${cleanModel}). What specific issue are you experiencing? (e.g., spark plugs, engine, brakes, electrical)`;
         }
       }
-      // 5. COLLECT ISSUE DESCRIPTION
+      // 8. COLLECT ISSUE DESCRIPTION ONLY
       else if (memory.model && (userTextLower.includes('spark') || userTextLower.includes('plug') || userTextLower.includes('engine') || userTextLower.includes('brake') || 
                                userTextLower.includes('oil') || userTextLower.includes('electrical') || userTextLower.includes('starting') || userTextLower.includes('noise') ||
                                userTextLower.includes('charging') || userTextLower.includes('battery') || userTextLower.includes('range') || userTextLower.includes('motor'))) {
@@ -484,11 +539,21 @@ app.post('/webhook', async (req, res) => {
         
         response = `Perfect! I understand: ${memory.model} with ${cleanIssue} issue. 🎯\n\nShould I search across videos, forums, and technical sites for solutions? (Say YES or SEARCH)`;
       }
-      // 6. FALLBACK
+      // 9. AFFIRMATIVE RESPONSE WITHOUT COMPLETE INFO (FIXED)
+      else if (userTextLower === 'yes' || userTextLower === 'yep' || userTextLower === 'yeah' || userTextLower.includes('search') || userTextLower.includes('find')) {
+        if (memory.model && memory.issue) {
+          // This should trigger the universal search in condition 5
+          response = `🔍 Searching across the entire internet for "${memory.model} ${memory.issue}"... This might take a moment!`;
+        } else {
+          response = "I'd love to help! First, tell me your vehicle model and what issue you're having.";
+        }
+      }
+      // 10. FALLBACK
       else {
         response = "I specialize in vehicle repair solutions across the entire internet! Tell me your vehicle (car, bike, scooter, or EV) and what's wrong, and I'll search everywhere for expert solutions. 🚗🏍️🛵";
       }
 
+      // Send response to user
       await bot.sendMessage(chatId, response);
       
     } catch (error) {
@@ -504,8 +569,9 @@ app.post('/webhook', async (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Priya Universal Vehicle Assistant running on port ${port}`);
   console.log(`🎥 YouTube API: ACTIVE`);
-  console.log(`🌐 Google Search API: DEBUG MODE`);
+  console.log(`🌐 Google Search API: OPTIMIZED`);
   console.log(`🏍️ Vehicle Types: Motorcycles, Scooters, Cars, EVs`);
+  console.log(`🔧 Smart Detection: Vehicle + Issue in one message`);
   console.log(`🔍 Search Sources: Videos + Forums + Technical Sites`);
   console.log(`🌐 Webhook: https://priya-assistant-1.onrender.com/webhook`);
 });
