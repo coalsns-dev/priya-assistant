@@ -49,22 +49,67 @@ async function searchYouTubeVideos(query) {
   }
 }
 
-// ==================== GOOGLE WEB SEARCH FUNCTION - DEBUGGED ====================
+// ==================== GOOGLE WEB SEARCH FUNCTION - OPTIMIZED ====================
 async function searchGoogleWeb(query, vehicleType) {
   const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
   const engineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
   
-  console.log(`🔍 Google Search API Check:`, { 
-    hasApiKey: !!apiKey, 
-    hasEngineId: !!engineId,
-    query: query 
-  });
-  
   if (!apiKey || !engineId) {
-    console.log('❌ Google Search API not configured properly');
+    console.log('Google Search API not configured properly');
     return [];
   }
   
+  // OPTIMIZED: Better search queries for vehicle-specific forums
+  const searchQueries = [
+    `${query} site:teambhp.com OR site:xbhp.com`, // Indian vehicle forums
+    `${query} "electrical problem" forum`,
+    `${query} repair guide OR solution`,
+    `${vehicleType} ${query} discussion`
+  ];
+  
+  let allResults = [];
+  
+  // Try multiple search queries to get better results
+  for (const searchQuery of searchQueries) {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(searchQuery)}&num=5`;
+    
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.items && data.items.length > 0) {
+        data.items.forEach(item => {
+          // Avoid duplicates and filter for quality
+          if (!allResults.some(existing => existing.link === item.link)) {
+            // Prioritize Indian vehicle forums and relevant content
+            const isRelevant = item.link.includes('teambhp') || 
+                              item.link.includes('xbhp') || 
+                              item.title.toLowerCase().includes('activa') ||
+                              item.snippet.toLowerCase().includes('electrical');
+            
+            if (isRelevant) {
+              allResults.push({
+                title: item.title,
+                link: item.link,
+                snippet: item.snippet,
+                source: 'web',
+                relevance: isRelevant ? 10 : 1
+              });
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.log('Google Search failed for query:', searchQuery);
+    }
+    
+    // Small delay between requests
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  // Sort by relevance and return
+  return allResults.sort((a, b) => (b.relevance || 0) - (a.relevance || 0)).slice(0, 6);
+}
   // SIMPLIFIED: Use one effective search query
   const searchQuery = `${query} ${vehicleType} forum discussion site:teambhp.com OR site:reddit.com OR site:quora.com`;
   const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(searchQuery)}&num=5`;
